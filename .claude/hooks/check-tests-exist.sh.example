@@ -1,0 +1,62 @@
+#!/bin/bash
+# EXAMPLE HOOK — adapt the paths before enabling it.
+#
+# Stop hook: reminds, before a task finishes, that changed files may need tests.
+# This example assumes a monorepo layout (packages/server, packages/shared).
+# Edit the `case` patterns below to match THIS project's structure, then:
+#   1. rename the file to `check-tests-exist.sh`
+#   2. wire it as a Stop hook in .claude/settings.json
+#
+# Wiring:
+#   "Stop": [
+#     { "matcher": "", "hooks": [
+#       { "type": "command",
+#         "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-tests-exist.sh\"",
+#         "timeout": 15 } ] } ]
+
+INPUT=$(cat)
+
+CHANGED=$(git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null)
+[ -z "$CHANGED" ] && exit 0
+
+MISSING=""
+
+while IFS= read -r file; do
+  case "$file" in
+    # --- ADAPT THESE PATTERNS TO THE PROJECT ---
+
+    # Server routes need route tests
+    packages/server/src/routes/*.ts)
+      BASENAME=$(basename "$file" .ts | sed 's/\.routes//')
+      TEST_FILE="packages/server/src/__tests__/integration/${BASENAME}-routes.test.ts"
+      if [ ! -f "$TEST_FILE" ]; then
+        MISSING="$MISSING\n- $file -> missing $TEST_FILE"
+      fi
+      ;;
+
+    # Server services need service tests
+    packages/server/src/services/*.ts)
+      BASENAME=$(basename "$file" .ts | sed 's/\.service//')
+      UNIT="packages/server/src/__tests__/unit/${BASENAME}*.test.ts"
+      INTEG="packages/server/src/__tests__/integration/${BASENAME}*.test.ts"
+      if ! ls $UNIT 1>/dev/null 2>&1 && ! ls $INTEG 1>/dev/null 2>&1; then
+        MISSING="$MISSING\n- $file -> no test found"
+      fi
+      ;;
+
+    # Shared logic needs tests
+    packages/shared/src/**/*.ts)
+      BASENAME=$(basename "$file" .ts)
+      if ! ls packages/shared/src/__tests__/${BASENAME}*.test.ts 1>/dev/null 2>&1; then
+        MISSING="$MISSING\n- $file -> no test in shared/__tests__/"
+      fi
+      ;;
+  esac
+done <<< "$CHANGED"
+
+if [ -n "$MISSING" ]; then
+  MSG="Test coverage reminder — these changed files may need tests:${MISSING}"
+  echo "{\"continue\":true,\"systemMessage\":\"$MSG\"}"
+else
+  exit 0
+fi

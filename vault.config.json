@@ -1,0 +1,18 @@
+{
+  "address": "https://vault.next-inno.de",
+  "kv": {
+    "mount": "secret",
+    "version": 2
+  },
+  "paths": [
+    "environments/dev/shared",
+    "environments/dev/shibc-zero-cost-community-recognition-program"
+  ],
+  "output": ".env",
+  "targets": {
+    "WOODPECKER_TOKEN": ".claude/wp-token"
+  },
+  "claudeEnv": [
+    "GITHUB_TOKEN"
+  ]
+}

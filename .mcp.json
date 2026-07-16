@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "/usr/local/bin/github-mcp-server",
+      "args": [
+        "stdio"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}",
+        "GITHUB_TOOLSETS": "context,repos,issues,pull_requests,users"
+      }
+    },
+    "woodpecker-ci": {
+      "command": "node",
+      "args": [
+        ".claude/wp-mcp.cjs"
+      ]
+    }
+  }
+}

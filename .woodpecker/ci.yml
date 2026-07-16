@@ -1,0 +1,107 @@
+# Woodpecker CI — single-app NextInno project
+# ---------------------------------------------------------------------------
+# Copy to .woodpecker/ci.yml in the project and replace every <PLACEHOLDER>.
+#
+# Flow:
+#   pull_request      -> typecheck + lint + unit tests
+#   push to develop   -> + e2e, build image (tags: sha + stage-latest), deploy stage
+#   push to main      -> + e2e, build image (tags: sha + latest); prod rollout is manual
+#   any step fails    -> Telegram notification
+#
+# Required Woodpecker secrets (set per repo, or globally on the server):
+#   docker_username, docker_password   - registry.next-inno.de credentials
+#   portainer_webhook_stage            - stage stack redeploy webhook
+#   telegram_bot_token, telegram_chat_id
+# ---------------------------------------------------------------------------
+
+when:
+  - event: pull_request
+  - event: push
+    branch: [main, develop]
+
+steps:
+  test:
+    image: node:22-alpine
+    commands:
+      - npm ci
+      - npm run typecheck
+      - npm run lint
+      - npm test
+
+  e2e:
+    # Pin to the Playwright version matching the project's @playwright/test dependency.
+    image: mcr.microsoft.com/playwright:v1.50.0-noble
+    commands:
+      - npm ci
+      - npm run build
+      - npm run test:e2e
+    when:
+      - event: push
+        branch: [main, develop]
+
+  build-stage:
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      registry: registry.next-inno.de
+      repo: registry.next-inno.de/nextinno/shibc-zero-cost-community-recognition-program
+      dockerfile: Dockerfile
+      tags:
+        - ${CI_COMMIT_SHA:0:8}
+        - stage-latest
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+    when:
+      - event: push
+        branch: develop
+
+  build-prod:
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      registry: registry.next-inno.de
+      repo: registry.next-inno.de/nextinno/shibc-zero-cost-community-recognition-program
+      dockerfile: Dockerfile
+      tags:
+        - ${CI_COMMIT_SHA:0:8}
+        - latest
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+    when:
+      - event: push
+        branch: main
+
+  deploy-stage:
+    image: curlimages/curl
+    commands:
+      - curl -s -f -X POST "$WEBHOOK"
+    environment:
+      WEBHOOK:
+        from_secret: portainer_webhook_stage
+    when:
+      - event: push
+        branch: develop
+
+  notify-failure:
+    image: appleboy/drone-telegram
+    settings:
+      token:
+        from_secret: telegram_bot_token
+      to:
+        from_secret: telegram_chat_id
+      message: >-
+        ${CI_REPO_NAME} CI failed on ${CI_COMMIT_BRANCH} — ${CI_PIPELINE_URL}
+    when:
+      - status: failure
+
+# Optional service containers for the e2e step — uncomment and adjust.
+# services:
+#   postgres:
+#     image: postgres:16-alpine
+#     environment:
+#       POSTGRES_PASSWORD: test
+#       POSTGRES_DB: test
+#   redis:
+#     image: redis:7-alpine
